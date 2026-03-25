@@ -3,30 +3,52 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
-import { Flame, Cog, Wind, Zap, Info } from 'lucide-react';
+import { Flame, Cog, Wind, Zap, Info, CheckCircle } from 'lucide-react';
 import { calcSimulationResults } from '../data';
 
-function Toggle({ label, sub, checked, onChange }) {
+function InfoTooltip({ text }) {
   return (
-    <div className="toggle-wrap">
-      <div>
-        <div className="toggle-label">{label}</div>
-        {sub && <div className="toggle-sub">{sub}</div>}
-      </div>
-      <label className="toggle">
-        <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
-        <span className="toggle-slider" />
-      </label>
+    <div className="tooltip-container">
+      <Info size={13} color="var(--text-muted)" />
+      <div className="tooltip-box">{text}</div>
     </div>
   );
 }
 
-function Slider({ name, min, max, value, unit, onChange }) {
+function Toggle({ label, sub, checked, onChange, tooltip }) {
+  return (
+    <div className="toggle-wrap" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div className="toggle-label">{label}</div>
+            {tooltip && <InfoTooltip text={tooltip} />}
+          </div>
+          {sub && <div className="toggle-sub">{sub}</div>}
+        </div>
+        <label className="toggle">
+          <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
+          <span className="toggle-slider" />
+        </label>
+      </div>
+      {checked && (
+        <div className="visual-hint">
+          <span /> Emission control active
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Slider({ name, min, max, value, unit, onChange, tooltip }) {
   const pct = ((value - min) / (max - min)) * 100;
   return (
     <div className="slider-wrap">
       <div className="slider-top">
-        <span className="slider-name">{name}</span>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <span className="slider-name">{name}</span>
+          {tooltip && <InfoTooltip text={tooltip} />}
+        </div>
         <span className="slider-val">{value}{unit}</span>
       </div>
       <input
@@ -34,8 +56,15 @@ function Slider({ name, min, max, value, unit, onChange }) {
         onChange={e => onChange(Number(e.target.value))}
         style={{ background: `linear-gradient(to right, var(--accent-blue) ${pct}%, var(--border-bright) ${pct}%)` }}
       />
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-        <span>{min}{unit}</span><span>{max}{unit}</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+        <div style={{ display: 'flex', gap: 10, fontSize: 10, color: 'var(--text-muted)' }}>
+          <span>{min}{unit}</span><span>{max}{unit}</span>
+        </div>
+        {value > min && (
+          <div className="visual-hint" style={{ marginTop: 0 }}>
+            <span /> CO₂ decreasing
+          </div>
+        )}
       </div>
     </div>
   );
@@ -80,6 +109,7 @@ export default function Simulation() {
 
   const [ran, setRan] = useState(false);
   const [simResult, setSimResult] = useState(null);
+  const [toast, setToast] = useState({ show: false, hiding: false });
 
   const controls = activeComponent === 'boiler'
     ? { efficiency: boilerEff, fuelOpt, carbonCapture, wasteHeat }
@@ -97,10 +127,19 @@ export default function Simulation() {
   function handleRun() {
     setSimResult(liveResult);
     setRan(true);
+    setToast({ show: true, hiding: false });
+    
+    // Auto-dismiss after 4 seconds
+    setTimeout(() => {
+      setToast(prev => ({ ...prev, hiding: true }));
+      setTimeout(() => {
+        setToast({ show: false, hiding: false });
+      }, 500); // Wait for fade-out animation
+    }, 4000);
   }
 
   function handleViewResults() {
-    navigate('/results', { state: { result: simResult, component: activeComponent } });
+    navigate('/results', { state: { result: simResult || liveResult, component: activeComponent } });
   }
 
   const info = COMPONENT_INFO[activeComponent];
@@ -148,10 +187,28 @@ export default function Simulation() {
 
             {activeComponent === 'boiler' && (
               <>
-                <Slider name="Boiler Efficiency" min={50} max={90} value={boilerEff} unit="%" onChange={setBoilerEff} />
-                <Slider name="Fuel Optimization" min={0} max={100} value={fuelOpt} unit="%" onChange={setFuelOpt} />
-                <Toggle label="Carbon Capture System" sub="Post-combustion CO₂ absorption" checked={carbonCapture} onChange={setCarbonCapture} />
-                <Toggle label="Waste Heat Recovery" sub="Economiser on flue gas" checked={wasteHeat} onChange={setWasteHeat} />
+                <Slider
+                  name="Boiler Efficiency"
+                  min={50} max={90} value={boilerEff} unit="%" onChange={setBoilerEff}
+                  tooltip="Controls how efficiently fuel is converted into energy. Increasing efficiency reduces coal consumption and lowers CO₂ emissions."
+                />
+                <Slider
+                  name="Fuel Optimization"
+                  min={0} max={100} value={fuelOpt} unit="%" onChange={setFuelOpt}
+                  tooltip="Represents improved fuel usage or cleaner fuel mix. Increasing this reduces carbon content burned and lowers emissions."
+                />
+                <Toggle
+                  label="Carbon Capture System"
+                  sub="Post-combustion CO₂ absorption"
+                  checked={carbonCapture} onChange={setCarbonCapture}
+                  tooltip="Captures CO₂ from exhaust gases before release. Turning this ON significantly reduces emissions reaching the atmosphere."
+                />
+                <Toggle
+                  label="Waste Heat Recovery"
+                  sub="Economiser on flue gas"
+                  checked={wasteHeat} onChange={setWasteHeat}
+                  tooltip="Reuses excess heat to improve system efficiency. Enabling this reduces fuel consumption and indirectly lowers emissions."
+                />
                 <div style={{ marginTop: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 8 }}>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Preventive Measures Applied</div>
                   <div className="suggestion-item"><div className="suggestion-dot" />Optimize air-fuel ratio (stoichiometric 1.15:1)</div>
@@ -163,10 +220,26 @@ export default function Simulation() {
 
             {activeComponent === 'turbine' && (
               <>
-                <Slider name="Turbine Efficiency" min={50} max={95} value={turbineEff} unit="%" onChange={setTurbineEff} />
-                <Slider name="Steam Pressure Optimization" min={0} max={100} value={steamPressure} unit="%" onChange={setSteamPressure} />
-                <Toggle label="Leakage Reduction" sub="Upgraded gland seal technology" checked={leakageReduction} onChange={setLeakageReduction} />
-                <Toggle label="Maintenance Optimization" sub="Predictive maintenance schedule" checked={maintenanceOpt} onChange={setMaintenanceOpt} />
+                <Slider
+                  name="Turbine Efficiency"
+                  min={50} max={95} value={turbineEff} unit="%" onChange={setTurbineEff}
+                  tooltip="Improves energy conversion from steam. Increasing efficiency reduces fuel demand and lowers CO₂ emissions indirectly."
+                />
+                <Slider
+                  name="Steam Pressure Optimization"
+                  min={0} max={100} value={steamPressure} unit="%" onChange={setSteamPressure}
+                />
+                <Toggle
+                  label="Leakage Reduction"
+                  sub="Upgraded gland seal technology"
+                  checked={leakageReduction} onChange={setLeakageReduction}
+                  tooltip="Reduces steam and energy losses. Enabling this improves efficiency and decreases fuel usage and emissions."
+                />
+                <Toggle
+                  label="Maintenance Optimization"
+                  sub="Predictive maintenance schedule"
+                  checked={maintenanceOpt} onChange={setMaintenanceOpt}
+                />
                 <div style={{ marginTop: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 8 }}>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Preventive Measures Applied</div>
                   <div className="suggestion-item"><div className="suggestion-dot" />Improve blade efficiency with coated alloys</div>
@@ -178,10 +251,27 @@ export default function Simulation() {
 
             {activeComponent === 'chimney' && (
               <>
-                <Slider name="Emission Filter Efficiency" min={0} max={100} value={filterEff} unit="%" onChange={setFilterEff} />
-                <Slider name="Exhaust Gas Optimization" min={0} max={100} value={exhaustOpt} unit="%" onChange={setExhaustOpt} />
-                <Toggle label="Carbon Capture System" sub="MEA solvent post-combustion capture" checked={chimneyCapture} onChange={setChimneyCapture} />
-                <Toggle label="Flue Gas Scrubber (FGD)" sub="Wet desulfurization system" checked={scrubber} onChange={setScrubber} />
+                <Slider
+                  name="Emission Filter Efficiency"
+                  min={0} max={100} value={filterEff} unit="%" onChange={setFilterEff}
+                  tooltip="Controls effectiveness of emission filtration. Increasing this reduces the amount of CO₂ and pollutants released."
+                />
+                <Slider
+                  name="Exhaust Gas Optimization"
+                  min={0} max={100} value={exhaustOpt} unit="%" onChange={setExhaustOpt}
+                />
+                <Toggle
+                  label="Carbon Capture System"
+                  sub="MEA solvent post-combustion capture"
+                  checked={chimneyCapture} onChange={setChimneyCapture}
+                  tooltip="Captures CO₂ from exhaust gases before release. Turning this ON significantly reduces emissions reaching the atmosphere."
+                />
+                <Toggle
+                  label="Flue Gas Scrubber (FGD)"
+                  sub="Wet desulfurization system"
+                  checked={scrubber} onChange={setScrubber}
+                  tooltip="Filters harmful gases from exhaust. Enabling this reduces pollutants released into the atmosphere."
+                />
                 <div style={{ marginTop: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 8 }}>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Preventive Measures Applied</div>
                   <div className="suggestion-item"><div className="suggestion-dot" />Install wet FGD scrubbers (SO₂ removal)</div>
@@ -258,6 +348,25 @@ export default function Simulation() {
           )}
         </div>
       </div>
+
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="toast-container">
+          <div className={`toast ${toast.hiding ? 'hiding' : ''}`}>
+            <div className="toast-icon">
+              <CheckCircle size={14} />
+            </div>
+            <div className="toast-content">
+              <div className="toast-text">
+                Simulation completed successfully. You can now view detailed results in the Results page.
+              </div>
+              <button className="toast-btn" onClick={handleViewResults}>
+                View Results
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
